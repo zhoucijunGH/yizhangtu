@@ -1,0 +1,40 @@
+# 果账通 · 后端配置
+#
+# 一套代码跑两种部署，差异全部走 YZT_* 环境变量：
+#   本地化部署：什么都不用配，冒号后的默认值 = 现在的本地环境
+#   云服务部署：deploy/docker-compose.yml 里注入环境变量覆盖
+server:
+  port: ${YZT_PORT:8080}
+
+spring:
+  application:
+    name: yizhangtu-server
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 本地默认连本机 MySQL；云上指向 compose 里的 mysql 服务或云 RDS
+    url: ${YZT_DB_URL:jdbc:mysql://localhost:3306/yizhangtu?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${YZT_DB_USER:root}
+    password: ${YZT_DB_PASSWORD:123456}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  jackson:
+    # 日期时间序列化为 ISO 字符串
+    date-format: yyyy-MM-dd HH:mm:ss
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+# 果账通业务配置
+yizhangtu:
+  jwt:
+    # 云上必须通过 YZT_JWT_SECRET 覆盖成随机长串
+    secret: ${YZT_JWT_SECRET:yizhangtu-2026-jwt-secret-key-please-override-in-prod}
+    # Token 有效期（小时）
+    expire-hours: 72
+  # 磅单照片存储目录：本地=运行目录 ./uploads；云上=容器卷 /data/uploads
+  upload-dir: ${YZT_UPLOAD_DIR:uploads}

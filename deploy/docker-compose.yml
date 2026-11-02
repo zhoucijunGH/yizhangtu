@@ -1,0 +1,68 @@
+# 轻量行业一张图监管平台 · 云服务一键部署（与本地化部署共用同一套代码，仅配置不同）
+#
+# 上云步骤（服务器需装 docker + compose 插件）：
+#   1. 服务器上准备好目录：
+#        yizhangtu/
+#          sql/yizhangtu.sql          建库脚本（首次启动自动执行）
+#          server/target/*.jar        本机 mvn package 出来的 jar
+#          server/Dockerfile
+#          admin/dist/                本机 npm run build 出来的后台静态文件
+#          deploy/docker-compose.yml  本文件
+#   2. 编辑下方 YZT_JWT_SECRET / YZT_DB_PASSWORD（必须改）
+#   3. cd deploy && docker compose up -d --build
+#   4. 开 80/443 安全组 → nginx 托管管理后台并反代接口
+#
+# 本地化部署不受影响：不配任何 YZT_* 环境变量，application.yml 默认值即本地环境。
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${YZT_DB_PASSWORD:-ChangeMe123!}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动导入建库+种子数据（脚本可重复执行）
+      - ../sql/yizhangtu.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: ../server
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      YZT_PORT: "8094"
+      YZT_DB_URL: "jdbc:mysql://mysql:3306/yizhangtu?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+      YZT_DB_USER: root
+      YZT_DB_PASSWORD: ${YZT_DB_PASSWORD:-ChangeMe123!}
+      # 必改：随机长串（如 openssl rand -hex 32），否则 token 可被伪造
+      YZT_JWT_SECRET: ${YZT_JWT_SECRET:-please-change-this-jwt-secret-to-a-long-random-string}
+    volumes:
+      - app-data:/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 管理后台静态构建产物
+      - ../admin/dist:/usr/share/nginx/html:ro
+
+volumes:
+  mysql-data:
+  app-data:
